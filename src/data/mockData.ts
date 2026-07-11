@@ -43,25 +43,11 @@ export const DEFAULT_PELANGGARAN: Pelanggaran[] = [
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  googleAppsScriptUrl: '',
-  useLiveDatabase: false,
-  namaSekolah: 'SMAN 1 Contoh'
+  namaSekolah: 'SMP Negeri 02 Kota Bengkulu',
+  namaAplikasi: 'SIPATUH',
+  logoUrl: ''
 };
 
 export function initializeLocalStorage() {
-  if (!localStorage.getItem('siswa_users')) {
-    localStorage.setItem('siswa_users', JSON.stringify(DEFAULT_USERS));
-  }
-  if (!localStorage.getItem('siswa_students')) {
-    localStorage.setItem('siswa_students', JSON.stringify(DEFAULT_SISWA));
-  }
-  if (!localStorage.getItem('siswa_violations')) {
-    localStorage.setItem('siswa_violations', JSON.stringify(DEFAULT_JENIS_PELANGGARAN));
-  }
-  if (!localStorage.getItem('siswa_records')) {
-    localStorage.setItem('siswa_records', JSON.stringify(DEFAULT_PELANGGARAN));
-  }
-  if (!localStorage.getItem('siswa_settings')) {
-    localStorage.setItem('siswa_settings', JSON.stringify(DEFAULT_SETTINGS));
-  }
+  
 }
