@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Siswa, JenisPelanggaran, PelanggaranJoined, AppSettings } from './types';
-import { api, saveSettings } from './services/api';
+import { api } from './services/api';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -26,7 +26,7 @@ import {
 export default function App() {
   // Auth Session States
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const s = localStorage.getItem('siswa_current_user');
+    const s = sessionStorage.getItem('siswa_current_user');
     return s ? JSON.parse(s) : null;
   });
 
@@ -39,27 +39,12 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
 
   // Settings
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const s = localStorage.getItem('siswa_settings');
-    if (s) {
-      try {
-        const parsed = JSON.parse(s);
-        return {
-          namaAplikasi: 'Sistem Poin Pelanggaran Siswa',
-          logoUrl: '',
-          ...parsed
-        };
-      } catch (e) {
-        // ignore
-      }
-    }
-    return {
-      googleAppsScriptUrl: '',
-      useLiveDatabase: false,
-      namaSekolah: 'SMAN 1 Contoh',
-      namaAplikasi: 'Sistem Poin Pelanggaran Siswa',
-      logoUrl: ''
-    };
+  const [settings, setSettings] = useState<AppSettings>({
+    googleAppsScriptUrl: api.getGoogleAppsScriptUrl(),
+    useLiveDatabase: true,
+    namaSekolah: 'SMPN 2 Bengkulu Kota',
+    namaAplikasi: 'Sistem Poin Pelanggaran Siswa',
+    logoUrl: ''
   });
 
   // Navigation
@@ -73,6 +58,7 @@ export default function App() {
 
   // Initial Fetch & Sync
   const loadData = async (showSpinner = true) => {
+    if (!settings.googleAppsScriptUrl) return;
     if (showSpinner) setLoading(true);
     else setSyncing(true);
 
@@ -90,14 +76,12 @@ export default function App() {
           data.settings.logoUrl !== settings.logoUrl;
 
         if (hasChanges) {
-          const mergedSettings = {
-            ...settings,
-            namaSekolah: data.settings.namaSekolah,
-            namaAplikasi: data.settings.namaAplikasi,
-            logoUrl: data.settings.logoUrl
-          };
-          setSettings(mergedSettings);
-          saveSettings(mergedSettings);
+          setSettings(prev => ({
+            ...prev,
+            namaSekolah: data.settings?.namaSekolah || prev.namaSekolah,
+            namaAplikasi: data.settings?.namaAplikasi || prev.namaAplikasi,
+            logoUrl: data.settings?.logoUrl || prev.logoUrl
+          }));
         }
       }
     } catch (err) {
@@ -110,7 +94,7 @@ export default function App() {
 
   useEffect(() => {
     loadData();
-  }, [settings.googleAppsScriptUrl, settings.useLiveDatabase]);
+  }, [settings.googleAppsScriptUrl]);
 
   // Handle Login Action
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -125,8 +109,6 @@ export default function App() {
       return;
     }
 
-    // In a real OAuth or simple login, compare password.
-    // Our mock password is simple plain text.
     if (matchedUser.password && matchedUser.password !== loginPassword) {
       setLoginError('Kata sandi yang Anda masukkan salah.');
       return;
@@ -134,35 +116,28 @@ export default function App() {
 
     // Success login
     setCurrentUser(matchedUser);
-    localStorage.setItem('siswa_current_user', JSON.stringify(matchedUser));
+    sessionStorage.setItem('siswa_current_user', JSON.stringify(matchedUser));
     setCurrentView('dashboard');
-  };
-
-  // Handle Quick Login for developer/user convenience
-  const handleQuickLogin = (username: string) => {
-    const matchedUser = users.find(u => u.username === username);
-    if (matchedUser) {
-      setCurrentUser(matchedUser);
-      localStorage.setItem('siswa_current_user', JSON.stringify(matchedUser));
-      setCurrentView('dashboard');
-    }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('siswa_current_user');
+    sessionStorage.removeItem('siswa_current_user');
   };
 
   // Handle settings update
   const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
-    saveSettings(newSettings);
 
     // Also save to live spreadsheet if enabled
-    if (newSettings.useLiveDatabase && newSettings.googleAppsScriptUrl) {
+    if (newSettings.googleAppsScriptUrl) {
       setSyncing(true);
       try {
-        await api.saveSettingsRemote(newSettings);
+        await api.saveSettingsRemote({
+          namaSekolah: newSettings.namaSekolah,
+          namaAplikasi: newSettings.namaAplikasi || '',
+          logoUrl: newSettings.logoUrl || ''
+        });
       } catch (err) {
         console.error('Failed to sync settings to Google Sheets:', err);
       } finally {
@@ -239,12 +214,25 @@ export default function App() {
             {settings.namaAplikasi || 'Sistem Poin Pelanggaran Siswa'}
           </h2>
           <p className="mt-1.5 text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
-            Aplikasi bimbingan konseling pencatatan skor tata tertib sekolah, pelaporan orang tua & database Google Sheets di {settings.namaSekolah || 'SMAN 1 Contoh'}.
+            Aplikasi bimbingan konseling pencatatan skor tata tertib sekolah, pelaporan orang tua & database Google Sheets di {settings.namaSekolah || 'Sekolah Anda'}.
           </p>
         </div>
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white py-8 px-6 sm:px-10 rounded-3xl border border-gray-100 shadow-xl space-y-6">
+            
+            {!settings.googleAppsScriptUrl && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex gap-2.5">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Konfigurasi Database Belum Selesai</p>
+                  <p className="mt-0.5 leading-relaxed text-rose-700/90">
+                    Sistem belum dikonfigurasi dengan URL Apps Script. Atur variabel lingkungan <code>VITE_GOOGLE_APPS_SCRIPT_URL</code> di <code>.env</code> untuk menghubungkan database.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               {loginError && (
                 <div className="bg-rose-50 border border-rose-150 text-rose-700 text-xs font-semibold px-4 py-3 rounded-xl flex items-center gap-2 animate-scale-up">
@@ -263,7 +251,7 @@ export default function App() {
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                     className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-hidden focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 font-mono"
-                    placeholder="Contoh: admin atau guru1"
+                    placeholder="Masukkan username..."
                   />
                 </div>
               </div>
@@ -285,13 +273,20 @@ export default function App() {
 
               <button
                 type="submit"
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-bold text-xs hover:from-emerald-700 hover:to-teal-800 focus:outline-hidden transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                disabled={!settings.googleAppsScriptUrl}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-bold text-xs hover:from-emerald-700 hover:to-teal-800 focus:outline-hidden transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Masuk ke Aplikasi
               </button>
             </form>
 
-          
+            <div className="border-t border-gray-100 pt-4 flex justify-between items-center text-xs">
+              <span className="text-gray-400 flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${settings.googleAppsScriptUrl ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
+                {settings.googleAppsScriptUrl ? 'Google Sheets Terhubung' : 'Google Sheets Terputus'}
+              </span>
+            </div>
+
           </div>
         </div>
       </div>
@@ -307,7 +302,6 @@ export default function App() {
     { id: 'kelola_users', name: 'Kelola Pengguna', icon: Users, roles: ['admin'] },
     { id: 'riwayat', name: 'Riwayat & Laporan', icon: History, roles: ['admin', 'guru'] },
     { id: 'tampilan', name: 'Identitas & Logo', icon: Sliders, roles: ['admin'] },
-    
   ];
 
   const filteredSidebarItems = sidebarItems.filter(item => item.roles.includes(currentUser.level));
@@ -403,11 +397,11 @@ export default function App() {
         {/* Database Status indicator */}
         <div className="p-4 mx-4 mt-4 bg-gray-50 border border-gray-100 rounded-2xl">
           <div className="flex items-center gap-2">
-            <Database className={`w-4 h-4 ${settings.useLiveDatabase ? 'text-emerald-500 animate-pulse' : 'text-amber-500'}`} />
+            <Database className="w-4 h-4 text-emerald-500 animate-pulse" />
             <div>
               <span className="text-[10px] uppercase font-bold text-gray-400 block">Koneksi Database</span>
               <span className="text-xs font-extrabold text-gray-700">
-                {settings.useLiveDatabase ? 'Google Spreadsheet' : 'Demo Mode (Lokal)'}
+                Google Spreadsheet
               </span>
             </div>
           </div>
@@ -490,8 +484,8 @@ export default function App() {
               </span>
             )}
             <div className="flex items-center gap-2 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl">
-              <span className={`w-2 h-2 rounded-full ${settings.useLiveDatabase ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-              {settings.useLiveDatabase ? 'Database Live' : 'Database Lokal'}
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Spreadsheet Cloud
             </div>
           </div>
         </header>
@@ -562,10 +556,6 @@ export default function App() {
                   onDeletePelanggaran={handleDeletePelanggaran}
                   schoolName={settings.namaSekolah}
                 />
-              )}
-
-              {currentView === 'setup' && currentUser.level === 'admin' && (
-               
               )}
 
               {currentView === 'tampilan' && currentUser.level === 'admin' && (

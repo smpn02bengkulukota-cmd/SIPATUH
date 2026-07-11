@@ -4,46 +4,25 @@
  */
 
 import { User, Siswa, JenisPelanggaran, Pelanggaran, PelanggaranJoined, AppSettings } from '../types';
-import { initializeLocalStorage } from '../data/mockData';
 
-// Ensure data is initialized in local storage
-initializeLocalStorage();
-const GOOGLE_SCRIPT_URL =
-'https://script.google.com/macros/s/AKfycbze5Vofblb3W98TuvvsHT0e6IpBcdg_WNVDGLO-vQf446oSw5jrILDx5Bkt8kbwtZ5q/exec';
-
-export function saveSettings(settings: AppSettings) {
-  localStorage.setItem('siswa_settings', JSON.stringify(settings));
-}
-
-// Low-level Local Storage getters/setters
-const getLocalUsers = (): User[] => JSON.parse(localStorage.getItem('siswa_users') || '[]');
-const setLocalUsers = (data: User[]) => localStorage.setItem('siswa_users', JSON.stringify(data));
-
-const getLocalSiswa = (): Siswa[] => JSON.parse(localStorage.getItem('siswa_students') || '[]');
-const setLocalSiswa = (data: Siswa[]) => localStorage.setItem('siswa_students', JSON.stringify(data));
-
-const getLocalJenisPelanggaran = (): JenisPelanggaran[] => JSON.parse(localStorage.getItem('siswa_violations') || '[]');
-const setLocalJenisPelanggaran = (data: JenisPelanggaran[]) => localStorage.setItem('siswa_violations', JSON.stringify(data));
-
-const getLocalPelanggaran = (): Pelanggaran[] => JSON.parse(localStorage.getItem('siswa_records') || '[]');
-const setLocalPelanggaran = (data: Pelanggaran[]) => localStorage.setItem('siswa_records', JSON.stringify(data));
+const GOOGLE_APPS_SCRIPT_URL = (import.meta as any).env.VITE_GOOGLE_APPS_SCRIPT_URL || '';
 
 // Fetch helper for Google Apps Script with CORS handling
 async function callGAS(action: string, payload: any = {}) {
-const url = new URL(GOOGLE_SCRIPT_URL);
-url.searchParams.set('action', action);
-  const url = new URL(GOOGLE_SCRIPT_URL);
+  if (!GOOGLE_APPS_SCRIPT_URL) {
+    throw new Error('Google Apps Script Web App URL belum dikonfigurasi di environment variable VITE_GOOGLE_APPS_SCRIPT_URL.');
+  }
+
+  const url = new URL(GOOGLE_APPS_SCRIPT_URL);
   url.searchParams.set('action', action);
 
   let response;
   if (Object.keys(payload).length > 0) {
-    // Apps Script prefers POST or GET. Since Apps Script redirects, fetch handles redirect automatically.
-    // However, POST to Apps Script requires a redirect-safe request, or we can send it as parameters or a JSON body.
-    response = await fetch(GOOGLE_SCRIPT_URL, {
+    response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
       method: 'POST',
       mode: 'cors',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', // Plain text prevents CORS preflight triggers which Apps Script can struggle with
+        'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify({ action, ...payload })
     });
@@ -65,13 +44,14 @@ url.searchParams.set('action', action);
   return result.data;
 }
 
-// Master API methods supporting live/offline dual states
+// Master API methods - strictly calling Apps Script without local fallbacks
 export const api = {
-  // Sync Status
-  isLive: () => true,
+  isLive: (): boolean => {
+    return !!GOOGLE_APPS_SCRIPT_URL;
+  },
 
-  getSchoolName: (): string => {
-    return getSettings().namaSekolah;
+  getGoogleAppsScriptUrl: (): string => {
+    return GOOGLE_APPS_SCRIPT_URL;
   },
 
   // GET ALL DATA
@@ -80,34 +60,29 @@ export const api = {
     siswa: Siswa[];
     jenisPelanggaran: JenisPelanggaran[];
     pelanggaran: PelanggaranJoined[];
-    settings?: AppSettings;
+    settings?: Omit<AppSettings, 'googleAppsScriptUrl' | 'useLiveDatabase'>;
   }> => {
-    if (api.isLive()) {
-      try {
-        const data = await callGAS('getAllData');
-        const liveSettings: AppSettings | undefined = data.settings ? {
-          googleAppsScriptUrl: getSettings().googleAppsScriptUrl,
-          useLiveDatabase: true,
-          namaSekolah: data.settings.namaSekolah || getSettings().namaSekolah,
-          namaAplikasi: data.settings.namaAplikasi || getSettings().namaAplikasi || 'Sistem Poin Pelanggaran Siswa',
-          logoUrl: data.settings.logoUrl || getSettings().logoUrl || ''
-        } : undefined;
+    try {
+      const data = await callGAS('getAllData');
+      
+      const liveSettings = data.settings ? {
+        namaSekolah: data.settings.namaSekolah || 'SMPN 2 Bengkulu Kota',
+        namaAplikasi: data.settings.namaAplikasi || 'Sistem Poin Pelanggaran Siswa',
+        logoUrl: data.settings.logoUrl || ''
+      } : undefined;
 
-        return {
-          users: data.users || [],
-          siswa: data.siswa || [],
-          jenisPelanggaran: data.jenisPelanggaran || [],
-          pelanggaran: api.joinData(data.pelanggaran || [], data.siswa || [], data.jenisPelanggaran || [], data.users || []),
-          settings: liveSettings
-        };
-      } 
+      return {
+        users: data.users || [],
+        siswa: data.siswa || [],
+        jenisPelanggaran: data.jenisPelanggaran || [],
+        pelanggaran: api.joinData(data.pelanggaran || [], data.siswa || [], data.jenisPelanggaran || [], data.users || []),
+        settings: liveSettings
+      };
+    } catch (err) {
+      console.error('Gagal mengambil data dari Google Apps Script:', err);
+      throw err;
     }
-
-    // Local state fallback
-    catch(err){
-    console.error(err);
-    throw err;
-}
+  },
 
   joinData: (records: Pelanggaran[], siswa: Siswa[], violations: JenisPelanggaran[], users: User[]): PelanggaranJoined[] => {
     return records.map(rec => {
@@ -129,175 +104,87 @@ export const api = {
 
   // USERS CRUD
   saveUser: async (user: Omit<User, 'id'> & { id?: number }): Promise<User> => {
-    
-
-    const users = getLocalUsers();
-    let savedUser: User;
-    if (user.id) {
-      savedUser = { ...user } as User;
-      const index = users.findIndex(u => u.id === user.id);
-      if (index !== -1) users[index] = savedUser;
-    } else {
-      const nextId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
-      savedUser = { ...user, id: nextId } as User;
-      users.push(savedUser);
+    try {
+      return await callGAS('saveUser', { user });
+    } catch (e) {
+      console.error('GAS saveUser error:', e);
+      throw e;
     }
-    setLocalUsers(users);
-    return savedUser;
   },
 
   deleteUser: async (id: number): Promise<boolean> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('deleteUser', { id });
-      } catch (e) {
-        console.error('GAS deleteUser error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('deleteUser', { id });
+    } catch (e) {
+      console.error('GAS deleteUser error:', e);
+      throw e;
     }
-
-    const users = getLocalUsers();
-    const filtered = users.filter(u => u.id !== id);
-    setLocalUsers(filtered);
-    return true;
   },
 
   // SISWA CRUD
   saveSiswa: async (siswa: Omit<Siswa, 'id'> & { id?: number }): Promise<Siswa> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('saveSiswa', { siswa });
-      } catch (e) {
-        console.error('GAS saveSiswa error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('saveSiswa', { siswa });
+    } catch (e) {
+      console.error('GAS saveSiswa error:', e);
+      throw e;
     }
-
-    const list = getLocalSiswa();
-    let savedSiswa: Siswa;
-    if (siswa.id) {
-      savedSiswa = { ...siswa } as Siswa;
-      const index = list.findIndex(s => s.id === siswa.id);
-      if (index !== -1) list[index] = savedSiswa;
-    } else {
-      const nextId = list.length > 0 ? Math.max(...list.map(s => s.id)) + 1 : 1;
-      savedSiswa = { ...siswa, id: nextId } as Siswa;
-      list.push(savedSiswa);
-    }
-    setLocalSiswa(list);
-    return savedSiswa;
   },
 
   deleteSiswa: async (id: number): Promise<boolean> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('deleteSiswa', { id });
-      } catch (e) {
-        console.error('GAS deleteSiswa error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('deleteSiswa', { id });
+    } catch (e) {
+      console.error('GAS deleteSiswa error:', e);
+      throw e;
     }
-
-    const list = getLocalSiswa();
-    const filtered = list.filter(s => s.id !== id);
-    setLocalSiswa(filtered);
-    return true;
   },
 
   // VIOLATIONS (JENIS PELANGGARAN) CRUD
   saveJenisPelanggaran: async (item: Omit<JenisPelanggaran, 'id'> & { id?: number }): Promise<JenisPelanggaran> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('saveJenisPelanggaran', { item });
-      } catch (e) {
-        console.error('GAS saveJenisPelanggaran error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('saveJenisPelanggaran', { item });
+    } catch (e) {
+      console.error('GAS saveJenisPelanggaran error:', e);
+      throw e;
     }
-
-    const list = getLocalJenisPelanggaran();
-    let savedItem: JenisPelanggaran;
-    if (item.id) {
-      savedItem = { ...item } as JenisPelanggaran;
-      const index = list.findIndex(i => i.id === item.id);
-      if (index !== -1) list[index] = savedItem;
-    } else {
-      const nextId = list.length > 0 ? Math.max(...list.map(i => i.id)) + 1 : 1;
-      savedItem = { ...item, id: nextId } as JenisPelanggaran;
-      list.push(savedItem);
-    }
-    setLocalJenisPelanggaran(list);
-    return savedItem;
   },
 
   deleteJenisPelanggaran: async (id: number): Promise<boolean> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('deleteJenisPelanggaran', { id });
-      } catch (e) {
-        console.error('GAS deleteJenisPelanggaran error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('deleteJenisPelanggaran', { id });
+    } catch (e) {
+      console.error('GAS deleteJenisPelanggaran error:', e);
+      throw e;
     }
-
-    const list = getLocalJenisPelanggaran();
-    const filtered = list.filter(i => i.id !== id);
-    setLocalJenisPelanggaran(filtered);
-    return true;
   },
 
   // PELANGGARAN RECORD CRUD
   savePelanggaran: async (record: Omit<Pelanggaran, 'id'> & { id?: number }): Promise<Pelanggaran> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('savePelanggaran', { record });
-      } catch (e) {
-        console.error('GAS savePelanggaran error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('savePelanggaran', { record });
+    } catch (e) {
+      console.error('GAS savePelanggaran error:', e);
+      throw e;
     }
-
-    const list = getLocalPelanggaran();
-    let savedRecord: Pelanggaran;
-    if (record.id) {
-      savedRecord = { ...record } as Pelanggaran;
-      const index = list.findIndex(r => r.id === record.id);
-      if (index !== -1) list[index] = savedRecord;
-    } else {
-      const nextId = list.length > 0 ? Math.max(...list.map(r => r.id)) + 1 : 1;
-      savedRecord = { ...record, id: nextId } as Pelanggaran;
-      list.push(savedRecord);
-    }
-    setLocalPelanggaran(list);
-    return savedRecord;
   },
 
   deletePelanggaran: async (id: number): Promise<boolean> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('deletePelanggaran', { id });
-      } catch (e) {
-        console.error('GAS deletePelanggaran error:', e);
-        throw e;
-      }
+    try {
+      return await callGAS('deletePelanggaran', { id });
+    } catch (e) {
+      console.error('GAS deletePelanggaran error:', e);
+      throw e;
     }
-
-    const list = getLocalPelanggaran();
-    const filtered = list.filter(r => r.id !== id);
-    setLocalPelanggaran(filtered);
-    return true;
   },
 
-  saveSettingsRemote: async (settings: AppSettings): Promise<boolean> => {
-    if (api.isLive()) {
-      try {
-        await callGAS('saveSettings', { settings });
-        return true;
-      } catch (e) {
-        console.error('GAS saveSettings error:', e);
-        return false;
-      }
+  saveSettingsRemote: async (settings: { namaSekolah: string; namaAplikasi: string; logoUrl: string }): Promise<boolean> => {
+    try {
+      await callGAS('saveSettings', { settings });
+      return true;
+    } catch (e) {
+      console.error('GAS saveSettings error:', e);
+      throw e;
     }
-    return true;
   }
 };
