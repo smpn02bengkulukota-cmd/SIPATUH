@@ -8,11 +8,8 @@ import { initializeLocalStorage } from '../data/mockData';
 
 // Ensure data is initialized in local storage
 initializeLocalStorage();
-
-function getSettings(): AppSettings {
-  const s = localStorage.getItem('siswa_settings');
-  return s ? JSON.parse(s) : { googleAppsScriptUrl: '', useLiveDatabase: false, namaSekolah: 'SMAN 1 Contoh' };
-}
+const GOOGLE_SCRIPT_URL =
+'https://script.google.com/macros/s/AKfycbze5Vofblb3W98TuvvsHT0e6IpBcdg_WNVDGLO-vQf446oSw5jrILDx5Bkt8kbwtZ5q/exec';
 
 export function saveSettings(settings: AppSettings) {
   localStorage.setItem('siswa_settings', JSON.stringify(settings));
@@ -33,19 +30,16 @@ const setLocalPelanggaran = (data: Pelanggaran[]) => localStorage.setItem('siswa
 
 // Fetch helper for Google Apps Script with CORS handling
 async function callGAS(action: string, payload: any = {}) {
-  const settings = getSettings();
-  if (!settings.googleAppsScriptUrl) {
-    throw new Error('Google Apps Script Web App URL belum dikonfigurasi.');
-  }
-
-  const url = new URL(settings.googleAppsScriptUrl);
+const url = new URL(GOOGLE_SCRIPT_URL);
+url.searchParams.set('action', action);
+  const url = new URL(GOOGLE_SCRIPT_URL);
   url.searchParams.set('action', action);
 
   let response;
   if (Object.keys(payload).length > 0) {
     // Apps Script prefers POST or GET. Since Apps Script redirects, fetch handles redirect automatically.
     // However, POST to Apps Script requires a redirect-safe request, or we can send it as parameters or a JSON body.
-    response = await fetch(settings.googleAppsScriptUrl, {
+    response = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       mode: 'cors',
       headers: {
@@ -74,10 +68,7 @@ async function callGAS(action: string, payload: any = {}) {
 // Master API methods supporting live/offline dual states
 export const api = {
   // Sync Status
-  isLive: (): boolean => {
-    const s = getSettings();
-    return s.useLiveDatabase && !!s.googleAppsScriptUrl;
-  },
+  isLive: () => true,
 
   getSchoolName: (): string => {
     return getSettings().namaSekolah;
@@ -109,24 +100,14 @@ export const api = {
           pelanggaran: api.joinData(data.pelanggaran || [], data.siswa || [], data.jenisPelanggaran || [], data.users || []),
           settings: liveSettings
         };
-      } catch (err) {
-        console.warn('Gagal memuat data live, beralih ke Lokal Storage:', err);
-        // Fallback to local
-      }
+      } 
     }
 
     // Local state fallback
-    const users = getLocalUsers();
-    const siswa = getLocalSiswa();
-    const jenisPelanggaran = getLocalJenisPelanggaran();
-    const pelanggaran = getLocalPelanggaran();
-    return {
-      users,
-      siswa,
-      jenisPelanggaran,
-      pelanggaran: api.joinData(pelanggaran, siswa, jenisPelanggaran, users)
-    };
-  },
+    catch(err){
+    console.error(err);
+    throw err;
+}
 
   joinData: (records: Pelanggaran[], siswa: Siswa[], violations: JenisPelanggaran[], users: User[]): PelanggaranJoined[] => {
     return records.map(rec => {
@@ -148,14 +129,7 @@ export const api = {
 
   // USERS CRUD
   saveUser: async (user: Omit<User, 'id'> & { id?: number }): Promise<User> => {
-    if (api.isLive()) {
-      try {
-        return await callGAS('saveUser', { user });
-      } catch (e) {
-        console.error('GAS saveUser error:', e);
-        throw e;
-      }
-    }
+    
 
     const users = getLocalUsers();
     let savedUser: User;
