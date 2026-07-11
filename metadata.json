@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Poin Pelanggaran Siswa",
+  "description": "Aplikasi pengelolaan poin pelanggaran siswa berbasis web dengan dual role (Admin & Guru), pencarian siswa, integrasi laporan WhatsApp, dan backend sinkronisasi Google Spreadsheet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
