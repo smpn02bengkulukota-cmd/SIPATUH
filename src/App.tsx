@@ -14,7 +14,6 @@ import KelolaSiswa from './components/KelolaSiswa';
 import KelolaJenisPelanggaran from './components/KelolaJenisPelanggaran';
 import TambahPelanggaranGuru from './components/TambahPelanggaranGuru';
 import RiwayatPelanggaran from './components/RiwayatPelanggaran';
-import AppsScriptSetup from './components/AppsScriptSetup';
 import PengaturanTampilan from './components/PengaturanTampilan';
 
 // Icons
@@ -308,7 +307,7 @@ export default function App() {
     { id: 'kelola_users', name: 'Kelola Pengguna', icon: Users, roles: ['admin'] },
     { id: 'riwayat', name: 'Riwayat & Laporan', icon: History, roles: ['admin', 'guru'] },
     { id: 'tampilan', name: 'Identitas & Logo', icon: Sliders, roles: ['admin'] },
-    { id: 'setup', name: 'Integrasi Google Sheets', icon: Database, roles: ['admin'] },
+    
   ];
 
   const filteredSidebarItems = sidebarItems.filter(item => item.roles.includes(currentUser.level));
@@ -566,10 +565,7 @@ export default function App() {
               )}
 
               {currentView === 'setup' && currentUser.level === 'admin' && (
-                <AppsScriptSetup
-                  settings={settings}
-                  onSaveSettings={handleSaveSettings}
-                />
+               
               )}
 
               {currentView === 'tampilan' && currentUser.level === 'admin' && (
