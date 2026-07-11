@@ -292,34 +292,7 @@ export default function App() {
               </button>
             </form>
 
-            {/* Quick Login Profiles for Easy Testing */}
-            <div className="border-t border-gray-100 pt-5 space-y-3">
-              <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block text-center">Akun Uji Coba Cepat (Developer/BK)</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('admin')}
-                  className="px-3 py-2 bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100/60 border border-rose-100/50 text-left text-xs font-semibold flex items-center justify-between cursor-pointer"
-                >
-                  <div>
-                    <p className="font-extrabold text-[10px] uppercase text-rose-500">Akses Admin</p>
-                    <p className="text-[11px] font-bold">Admin BK</p>
-                  </div>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('guru1')}
-                  className="px-3 py-2 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100/60 border border-blue-100/50 text-left text-xs font-semibold flex items-center justify-between cursor-pointer"
-                >
-                  <div>
-                    <p className="font-extrabold text-[10px] uppercase text-blue-500">Akses Guru</p>
-                    <p className="text-[11px] font-bold">Guru BK</p>
-                  </div>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+          
           </div>
         </div>
       </div>
